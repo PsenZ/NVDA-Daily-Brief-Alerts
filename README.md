@@ -13,6 +13,11 @@ Automated daily NVDA brief (technical, fundamentals, news catalysts, options, ri
 
 The workflow runs every 20 minutes and only sends within the 07:30 ±10 minutes Sydney time window.
 
+## Notes
+
+- Data sources: Yahoo Finance, NVIDIA RSS (press/blog/developer), Google News RSS.
+- This brief is for information only and not investment advice.
+
 ## Manual run
 
 Use GitHub Actions `workflow_dispatch` to run on demand.

@@ -90,8 +90,31 @@ def macd(series, fast=12, slow=26, signal=9):
     return macd_line, signal_line, hist
 
 
+def bollinger_bands(series, window=20, num_std=2):
+    sma = series.rolling(window).mean()
+    std = series.rolling(window).std()
+    upper = sma + num_std * std
+    lower = sma - num_std * std
+    return sma, upper, lower
+
+
+def atr(high, low, close, period=14):
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [
+            (high - low),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    return tr.ewm(alpha=1 / period, adjust=False).mean()
+
+
 def tech_summary(hist):
     close = hist["Close"]
+    high = hist["High"]
+    low = hist["Low"]
     last = close.iloc[-1]
     prev = close.iloc[-2]
     chg = last - prev
@@ -105,6 +128,14 @@ def tech_summary(hist):
     macd_line, signal_line, hist_line = macd(close)
     macd_last = macd_line.iloc[-1]
     signal_last = signal_line.iloc[-1]
+
+    bb_sma, bb_upper, bb_lower = bollinger_bands(close)
+    bb_upper_last = bb_upper.iloc[-1]
+    bb_lower_last = bb_lower.iloc[-1]
+    bb_sma_last = bb_sma.iloc[-1]
+    bb_width = (bb_upper_last - bb_lower_last) / bb_sma_last if bb_sma_last else np.nan
+
+    atr14 = atr(high, low, close).iloc[-1]
 
     high_20 = close.rolling(20).max().iloc[-1]
     low_20 = close.rolling(20).min().iloc[-1]
@@ -122,6 +153,11 @@ def tech_summary(hist):
         "macd_hist": hist_line.iloc[-1],
         "high_20": high_20,
         "low_20": low_20,
+        "bb_upper": bb_upper_last,
+        "bb_lower": bb_lower_last,
+        "bb_sma": bb_sma_last,
+        "bb_width": bb_width,
+        "atr14": atr14,
     }
 
 
@@ -189,14 +225,21 @@ def options_summary(ticker):
 
 
 def news_items():
-    queries = [
-        "NVIDIA stock",
-        "NVDA earnings",
-        "NVIDIA AI chip",
+    rss_urls = [
+        "https://nvidianews.nvidia.com/releases.xml",
+        "https://feeds.feedburner.com/nvidiablog",
+        "https://developer.nvidia.com/blog/feed",
+        "https://blogs.nvidia.cn/blog/category/news/feed/",
+        "https://blogs.nvidia.cn/feed/",
+        "https://developer.nvidia.cn/zh-cn/blog/feed",
+        "https://news.google.com/rss/search?q=" + requests.utils.quote("NVIDIA stock"),
+        "https://news.google.com/rss/search?q=" + requests.utils.quote("NVDA earnings"),
+        "https://news.google.com/rss/search?q=" + requests.utils.quote("NVIDIA AI chip"),
+        "https://news.google.com/rss/search?q=" + requests.utils.quote("英伟达 OR NVIDIA"),
     ]
+
     items = []
-    for q in queries:
-        url = "https://news.google.com/rss/search?q=" + requests.utils.quote(q)
+    for url in rss_urls:
         feed = feedparser.parse(url)
         for e in feed.entries[:5]:
             items.append({
@@ -251,6 +294,8 @@ def compose_report(ticker, hist):
         if not np.isnan(t['sma200']) else f"均线: SMA20 {t['sma20']:.2f}, SMA50 {t['sma50']:.2f}",
         f"RSI14: {t['rsi14']:.1f}  MACD: {t['macd']:.2f} / Signal {t['signal']:.2f} / Hist {t['macd_hist']:.2f}",
         f"近20日区间: 高 {t['high_20']:.2f} / 低 {t['low_20']:.2f}",
+        f"布林带(20,2): 中轨 {t['bb_sma']:.2f} / 上轨 {t['bb_upper']:.2f} / 下轨 {t['bb_lower']:.2f} / 带宽 {t['bb_width']:.2%}",
+        f"ATR14: {t['atr14']:.2f} ({t['atr14'] / t['last']:.2%} of price)",
     ]
 
     fund_lines = [
@@ -304,7 +349,8 @@ def compose_report(ticker, hist):
         "[风险提示]",
         *risk_lines,
         "",
-        "来源: Yahoo Finance, Google News RSS",
+        "提示: 本简报仅供信息参考，不构成投资建议。",
+        "来源: Yahoo Finance, NVIDIA RSS, Google News RSS",
     ])
 
     return subject, body
