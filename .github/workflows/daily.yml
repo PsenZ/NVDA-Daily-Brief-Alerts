@@ -1,0 +1,50 @@
+﻿name: NVDA Daily Brief
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  send-brief:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run report
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+          SEND_HOUR: '7'
+          SEND_MINUTE: '30'
+          SEND_WINDOW_MINUTES: '10'
+          SUBJECT_PREFIX: 'NVDA 每日简报'
+        run: |
+          python report.py
+
+      - name: Commit state if updated
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add state/last_sent.json
+            git commit -m "Update last_sent state"
+            git push
+          else
+            echo "No state changes to commit."
+          fi
